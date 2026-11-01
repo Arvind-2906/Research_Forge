@@ -1,0 +1,1225 @@
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ======================================================
+// ENUMS
+// ======================================================
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ResearchRunStatus {
+  QUEUED
+  PLANNING
+  RUNNING
+  VERIFYING
+  SYNTHESIZING
+  WAITING_FOR_APPROVAL
+  PAUSED
+  REQUIRES_INPUT
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum PlanStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+enum TaskStatus {
+  PENDING
+  READY
+  RUNNING
+  WAITING
+  COMPLETED
+  FAILED
+  CANCELLED
+  SKIPPED
+}
+
+enum AgentStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum EventSeverity {
+  DEBUG
+  INFO
+  WARNING
+  ERROR
+}
+
+enum SourceType {
+  WEB
+  ACADEMIC
+  REPOSITORY
+  DOCUMENT
+  API
+  OTHER
+}
+
+enum SourceStatus {
+  DISCOVERED
+  EXTRACTED
+  FAILED
+  ARCHIVED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  PARTIALLY_VERIFIED
+  CONTRADICTED
+  REJECTED
+}
+
+enum EvidenceRelationship {
+  SUPPORTS
+  CONTRADICTS
+  CONTEXTUALIZES
+}
+
+enum ReportStatus {
+  DRAFT
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+enum ExportFormat {
+  PDF
+  DOCX
+  MARKDOWN
+  HTML
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum MemoryType {
+  RESEARCH_FINDING
+  USER_PREFERENCE
+  PROJECT_CONTEXT
+  IMPORTANT_FACT
+  RESEARCH_SUMMARY
+}
+
+enum MemoryScope {
+  USER
+  WORKSPACE
+  PROJECT
+}
+
+enum MCPTransport {
+  STREAMABLE_HTTP
+  SSE
+}
+
+enum MCPAuthType {
+  NONE
+  API_KEY
+  OAUTH
+  BEARER_TOKEN
+}
+
+enum MCPConnectionStatus {
+  UNKNOWN
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+enum MCPToolCallStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum IntegrationProvider {
+  GITHUB
+  GOOGLE
+  OTHER
+}
+
+enum KnowledgeNodeType {
+  TOPIC
+  CONCEPT
+  CLAIM
+  ENTITY
+  SOURCE
+  TECHNOLOGY
+  PERSON
+  ORGANIZATION
+  OTHER
+}
+
+enum KnowledgeRelationType {
+  RELATED_TO
+  SUPPORTS
+  CONTRADICTS
+  DEPENDS_ON
+  PART_OF
+  COMPARES_WITH
+  REFERENCES
+  OTHER
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum LLMProvider {
+  GROQ
+  HUGGINGFACE
+  OTHER
+}
+
+// ======================================================
+// AUTHENTICATION - BETTER AUTH
+// ======================================================
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions  Session[]
+  accounts  Account[]
+
+  ownedWorkspaces      Workspace[]       @relation("WorkspaceOwner")
+  memberships          WorkspaceMember[]
+  createdProjects      ResearchProject[] @relation("ProjectCreator")
+  requestedRuns        ResearchRun[]     @relation("RunRequester")
+  approvedPlans        ResearchPlan[]    @relation("PlanApprover")
+  createdMCPServers    MCPServer[]       @relation("MCPServerCreator")
+  externalConnections  ExternalConnection[]
+  memories             ResearchMemory[]  @relation("MemoryCreator")
+  userMemories          ResearchMemory[]  @relation("UserMemory")
+  mcpPermissions        MCPToolPermission[]
+  requestedApprovals    MCPApprovalRequest[] @relation("ApprovalRequester")
+  reviewedApprovals     MCPApprovalRequest[] @relation("ApprovalReviewer")
+  uploadedDocuments     DocumentAsset[]  @relation("DocumentUploader")
+
+  @@index([createdAt])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String   @db.Text
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ======================================================
+// WORKSPACES
+// ======================================================
+
+model Workspace {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  settings    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
+  members          WorkspaceMember[]
+  projects         ResearchProject[]
+  sources          ResearchSource[]
+  mcpServers       MCPServer[]
+  memories         ResearchMemory[]
+  knowledgeNodes   KnowledgeNode[]
+  documents        DocumentAsset[]
+
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
+model WorkspaceMember {
+  id       String        @id @default(cuid())
+  role     WorkspaceRole @default(MEMBER)
+  joinedAt DateTime      @default(now())
+
+  workspaceId String
+  userId      String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+// ======================================================
+// RESEARCH PROJECTS
+// ======================================================
+
+model ResearchProject {
+  id          String        @id @default(cuid())
+  title       String
+  description String?       @db.Text
+  status      ProjectStatus @default(ACTIVE)
+  settings    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  runs      ResearchRun[]
+  memories  ResearchMemory[]
+  documents DocumentAsset[]
+
+  @@index([workspaceId, status])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+// ======================================================
+// RESEARCH EXECUTION
+// ======================================================
+
+model ResearchRun {
+  id            String           @id @default(cuid())
+  question      String           @db.Text
+  status        ResearchRunStatus @default(QUEUED)
+  configuration Json?
+  configurationVersion Int       @default(1)
+
+  // Reference to LangGraph checkpoint thread.
+  graphThreadId String? @unique
+
+  startedAt   DateTime?
+  pausedAt    DateTime?
+  completedAt DateTime?
+
+  errorCode    String?
+  errorMessage String? @db.Text
+
+  totalTokens Int @default(0)
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projectId String
+  project   ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  requestedById String
+  requestedBy   User @relation("RunRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+
+  plans          ResearchPlan[]
+  tasks          ResearchTask[]
+  executions     AgentExecution[]
+  events         ResearchEvent[]
+  runSources     ResearchRunSource[]
+  claims         ResearchClaim[]
+  reports        ResearchReport[]
+  toolCalls      MCPToolCall[]
+  memories       ResearchMemory[]
+  llmInvocations LLMInvocation[]
+  documents      DocumentAsset[]
+
+  @@index([projectId, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([status, createdAt])
+}
+
+// ======================================================
+// RESEARCH PLANS
+// ======================================================
+
+model ResearchPlan {
+  id        String     @id @default(cuid())
+  version   Int
+  objective String     @db.Text
+  content   Json
+  status    PlanStatus @default(DRAFT)
+
+  approvedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  runId String
+  run   ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  approvedById String?
+  approvedBy   User? @relation("PlanApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  tasks ResearchTask[]
+
+  @@unique([runId, version])
+  @@index([runId, status])
+}
+
+// ======================================================
+// RESEARCH TASKS AND DEPENDENCIES
+// ======================================================
+
+model ResearchTask {
+  id          String     @id @default(cuid())
+  title       String
+  description String?    @db.Text
+  assignedAgent String?
+  status      TaskStatus @default(PENDING)
+
+  priority    Int      @default(3)
+  input       Json?
+  output      Json?
+
+  attemptCount Int @default(0)
+  maxAttempts  Int @default(3)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  runId String
+  run   ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  planId String?
+  plan   ResearchPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  parentTaskId String?
+  parentTask   ResearchTask?  @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  childTasks   ResearchTask[] @relation("TaskHierarchy")
+
+  dependencies ResearchTaskDependency[] @relation("DependentTask")
+  dependents   ResearchTaskDependency[] @relation("DependencyTask")
+
+  executions AgentExecution[]
+  events     ResearchEvent[]
+
+  @@index([runId, status])
+  @@index([planId])
+  @@index([parentTaskId])
+  @@index([assignedAgent])
+}
+
+model ResearchTaskDependency {
+  id String @id @default(cuid())
+
+  taskId       String
+  dependsOnId  String
+
+  task ResearchTask @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+
+  dependsOn ResearchTask @relation("DependencyTask", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnId])
+  @@index([dependsOnId])
+}
+
+// ======================================================
+// AGENT EXECUTION
+// ======================================================
+
+model AgentExecution {
+  id        String      @id @default(cuid())
+  agentName String
+  status    AgentStatus @default(PENDING)
+
+  sequence  Int
+  attempt   Int         @default(1)
+  iteration Int         @default(1)
+
+  modelProvider String?
+  modelName     String?
+
+  input  Json?
+  output Json?
+
+  errorMessage String? @db.Text
+
+  promptTokens     Int?
+  completionTokens Int?
+  durationMs       Int?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  runId String
+  run   ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  taskId String?
+  task   ResearchTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  parentExecutionId String?
+  parentExecution   AgentExecution?  @relation("ExecutionHierarchy", fields: [parentExecutionId], references: [id], onDelete: SetNull)
+  childExecutions   AgentExecution[] @relation("ExecutionHierarchy")
+
+  events         ResearchEvent[]
+  llmInvocations LLMInvocation[]
+
+  @@unique([runId, sequence])
+  @@index([runId, status])
+  @@index([taskId])
+  @@index([parentExecutionId])
+}
+
+// ======================================================
+// RESEARCH EVENTS - SSE EVENT HISTORY
+// ======================================================
+
+model ResearchEvent {
+  id        String        @id @default(cuid())
+  sequence  Int
+  eventType String
+  severity  EventSeverity @default(INFO)
+
+  agentName String?
+  message   String?       @db.Text
+  payload   Json?
+  eventKey  String?
+
+  createdAt DateTime @default(now())
+
+  runId String
+  run   ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  taskId String?
+  task   ResearchTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  agentExecutionId String?
+  agentExecution   AgentExecution? @relation(fields: [agentExecutionId], references: [id], onDelete: SetNull)
+
+  @@unique([runId, sequence])
+  @@index([runId, createdAt])
+  @@index([taskId])
+  @@index([agentExecutionId])
+}
+
+// ======================================================
+// RESEARCH SOURCES
+// ======================================================
+
+model ResearchSource {
+  id              String      @id @default(cuid())
+  url             String      @db.Text
+  canonicalUrl    String      @db.Text
+  canonicalUrlHash String
+  title           String?     @db.Text
+  domain          String?
+  author          String?
+  sourceType      SourceType  @default(WEB)
+  status          SourceStatus @default(DISCOVERED)
+
+  publishedAt DateTime?
+  lastAccessedAt DateTime?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  snapshots  SourceSnapshot[]
+  runSources ResearchRunSource[]
+
+  @@unique([workspaceId, canonicalUrlHash])
+  @@index([workspaceId, sourceType])
+  @@index([domain])
+  @@index([status])
+}
+
+// ======================================================
+// SOURCE SNAPSHOTS - VERSIONED SOURCE CONTENT
+// ======================================================
+
+model SourceSnapshot {
+  id            String   @id @default(cuid())
+  version       Int
+  contentHash   String
+  extractedText String?  @db.Text
+  summary       String?  @db.Text
+  extractionMetadata Json?
+
+  fetchedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  sourceId String
+  source   ResearchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  chunks   SourceChunk[]
+  evidence Evidence[]
+  runSources ResearchRunSource[]
+  memories   ResearchMemorySource[]
+
+  @@unique([sourceId, version])
+  @@index([sourceId, fetchedAt])
+  @@index([contentHash])
+}
+
+// ======================================================
+// RESEARCH RUN TO SOURCE RELATIONSHIP
+// ======================================================
+
+model ResearchRunSource {
+  id String @id @default(cuid())
+
+  runId String
+  run   ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  sourceId String
+  source   ResearchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  snapshotId String?
+  snapshot   SourceSnapshot? @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  discoveryMethod String?
+  relevanceScore  Float?
+  createdAt       DateTime @default(now())
+
+  @@unique([runId, sourceId])
+  @@index([sourceId])
+  @@index([runId, relevanceScore])
+}
+
+// ======================================================
+// RAG SOURCE CHUNKS
+// ======================================================
+
+model SourceChunk {
+  id         String   @id @default(cuid())
+  chunkIndex Int
+  content    String   @db.Text
+  contentHash String
+  tokenCount Int?
+  metadata   Json?
+
+  embeddingModel String?
+  embeddedAt     DateTime?
+
+  // BAAI/bge-small-en-v1.5 = 384 dimensions.
+  // Vector queries use Prisma raw SQL.
+  embedding Unsupported("vector(384)")?
+
+  createdAt DateTime @default(now())
+
+  snapshotId String
+  snapshot   SourceSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, chunkIndex])
+  @@index([snapshotId])
+  @@index([contentHash])
+}
+
+// ======================================================
+// RESEARCH CLAIMS
+// ======================================================
+
+model ResearchClaim {
+  id          String             @id @default(cuid())
+  claim       String             @db.Text
+  explanation String?            @db.Text
+  confidence  Float?
+  status      VerificationStatus @default(PENDING)
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runId String
+  run   ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  evidenceLinks ClaimEvidence[]
+  citations ReportCitation[]
+
+  @@index([runId, status])
+}
+
+// ======================================================
+// EVIDENCE - SOURCE PASSAGES
+// ======================================================
+
+model Evidence {
+  id             String   @id @default(cuid())
+  supportingQuote String  @db.Text
+  location       String?
+  pageNumber     Int?
+  paragraphIndex Int?
+  confidence     Float?
+  metadata       Json?
+
+  createdAt DateTime @default(now())
+
+  snapshotId String
+  snapshot   SourceSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  claimLinks    ClaimEvidence[]
+  reportCitations ReportCitation[]
+
+  @@index([snapshotId])
+}
+
+// ======================================================
+// CLAIM TO EVIDENCE RELATIONSHIP
+// ======================================================
+
+model ClaimEvidence {
+  id           String              @id @default(cuid())
+  relationship EvidenceRelationship
+  explanation  String?             @db.Text
+  confidence   Float?
+  createdAt    DateTime            @default(now())
+
+  claimId String
+  claim   ResearchClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  evidenceId String
+  evidence   Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, evidenceId])
+  @@index([evidenceId])
+  @@index([claimId, relationship])
+}
+
+// ======================================================
+// RESEARCH REPORTS
+// ======================================================
+
+model ResearchReport {
+  id               String       @id @default(cuid())
+  title            String
+  executiveSummary String?      @db.Text
+  contentMarkdown  String       @db.Text
+  status           ReportStatus @default(DRAFT)
+  version          Int          @default(1)
+  metadata         Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runId String
+  run   ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  citations ReportCitation[]
+  exports   ReportExport[]
+
+  @@unique([runId, version])
+  @@index([runId, createdAt])
+}
+
+// ======================================================
+// REPORT CITATIONS
+// ======================================================
+
+model ReportCitation {
+  id             String @id @default(cuid())
+  citationNumber Int
+  locator        String?
+  anchor         String?
+  citationText   String? @db.Text
+
+  claimId String?
+  claim   ResearchClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+
+  reportId String
+  report   ResearchReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  evidenceId String?
+  evidence   Evidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  @@unique([reportId, citationNumber])
+  @@index([evidenceId])
+  @@index([reportId])
+}
+
+// ======================================================
+// REPORT EXPORTS
+// ======================================================
+
+model ReportExport {
+  id          String       @id @default(cuid())
+  format      ExportFormat
+  status      ExportStatus @default(PENDING)
+  storageKey  String?      @db.Text
+  fileName    String?
+  fileSize    BigInt?
+  errorMessage String?     @db.Text
+
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  reportId String
+  report   ResearchReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, createdAt])
+  @@index([status])
+}
+
+// ======================================================
+// PERSISTENT RESEARCH MEMORY
+// ======================================================
+
+model ResearchMemory {
+  id       String      @id @default(cuid())
+  type     MemoryType
+  scope    MemoryScope
+  content  String      @db.Text
+  metadata Json?
+
+  embedding Unsupported("vector(384)")?
+  embeddingModel String?
+  embeddedAt     DateTime?
+
+  lastAccessedAt DateTime?
+  expiresAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   ResearchProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User? @relation("UserMemory", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User? @relation("MemoryCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  sourceRunId String?
+  sourceRun   ResearchRun? @relation(fields: [sourceRunId], references: [id], onDelete: SetNull)
+
+  sources ResearchMemorySource[]
+
+  @@index([scope, type])
+  @@index([workspaceId, type])
+  @@index([projectId, type])
+  @@index([userId, type])
+  @@index([expiresAt])
+}
+
+model ResearchMemorySource {
+  id String @id @default(cuid())
+
+  memoryId String
+  memory   ResearchMemory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+
+  snapshotId String
+  snapshot   SourceSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([memoryId, snapshotId])
+  @@index([snapshotId])
+}
+
+// ======================================================
+// REMOTE MCP SERVER REGISTRY
+// ======================================================
+
+model MCPServer {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  endpoint    String   @db.Text
+
+  transport MCPTransport @default(STREAMABLE_HTTP)
+  authType  MCPAuthType  @default(NONE)
+  status    MCPConnectionStatus @default(UNKNOWN)
+
+  isEnabled Boolean @default(true)
+
+  // Encrypted server-side credentials only.
+  encryptedCredentials String? @db.Text
+  configuration         Json?
+
+  serverInfo      Json?
+  capabilities    Json?
+  protocolVersion String?
+
+  lastConnectedAt    DateTime?
+  lastHealthCheckAt  DateTime?
+  lastError          String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User @relation("MCPServerCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  tools       MCPTool[]
+  toolCalls   MCPToolCall[]
+  permissions MCPToolPermission[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, isEnabled])
+  @@index([status])
+}
+
+// ======================================================
+// DISCOVERED MCP TOOLS
+// ======================================================
+
+model MCPTool {
+  id          String  @id @default(cuid())
+  name        String
+  description String? @db.Text
+
+  inputSchema  Json?
+  outputSchema Json?
+  annotations  Json?
+
+  schemaHash  String?
+  isEnabled   Boolean  @default(true)
+
+  discoveredAt DateTime @default(now())
+  lastSeenAt   DateTime?
+
+  serverId String
+  server   MCPServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  calls       MCPToolCall[]
+  permissions MCPToolPermission[]
+
+  @@unique([serverId, name])
+  @@index([serverId, isEnabled])
+}
+
+// ======================================================
+// MCP TOOL INVOCATION LOGS
+// ======================================================
+
+model MCPToolCall {
+  id       String           @id @default(cuid())
+  toolName String
+  status   MCPToolCallStatus @default(PENDING)
+
+  arguments Json?
+  result    Json?
+
+  errorMessage String? @db.Text
+  durationMs   Int?
+  attempt      Int     @default(1)
+
+  idempotencyKey String? @unique
+
+  approvalRequired Boolean @default(false)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  runId String
+  run   ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  serverId String?
+  server   MCPServer? @relation(fields: [serverId], references: [id], onDelete: SetNull)
+
+  toolId String?
+  tool   MCPTool? @relation(fields: [toolId], references: [id], onDelete: SetNull)
+
+  approval MCPApprovalRequest?
+
+  @@index([runId, createdAt])
+  @@index([serverId, status])
+  @@index([toolId])
+}
+
+// ======================================================
+// MCP TOOL PERMISSIONS
+// ======================================================
+
+model MCPToolPermission {
+  id String @id @default(cuid())
+
+  isAllowed        Boolean @default(true)
+  requiresApproval Boolean @default(false)
+
+  // Either userId or workspaceRole should be set.
+  // Enforce this rule in the application layer.
+  workspaceRole WorkspaceRole?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  serverId String
+  server   MCPServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  toolId String
+  tool   MCPTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([serverId, toolId])
+  @@index([userId])
+  @@index([workspaceRole])
+}
+
+// ======================================================
+// HUMAN APPROVAL FOR MCP ACTIONS
+// ======================================================
+
+model MCPApprovalRequest {
+  id              String         @id @default(cuid())
+  status          ApprovalStatus @default(PENDING)
+  requestedByAgent String
+  requestReason   String?        @db.Text
+  reviewComment   String?        @db.Text
+
+  requestedAt DateTime @default(now())
+  reviewedAt  DateTime?
+  expiresAt   DateTime?
+
+  toolCallId String @unique
+  toolCall   MCPToolCall @relation(fields: [toolCallId], references: [id], onDelete: Cascade)
+
+  requestedById String?
+  requestedBy   User? @relation("ApprovalRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  reviewedById String?
+  reviewedBy   User? @relation("ApprovalReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, requestedAt])
+}
+
+// ======================================================
+// EXTERNAL ACCOUNT CONNECTIONS
+// ======================================================
+
+model ExternalConnection {
+  id          String              @id @default(cuid())
+  provider    IntegrationProvider
+  accountName String?
+  externalAccountId String?
+
+  // Encrypted tokens only.
+  encryptedAccessToken  String? @db.Text
+  encryptedRefreshToken String? @db.Text
+
+  expiresAt DateTime?
+  scopes    String?
+  metadata  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider, externalAccountId])
+  @@index([userId, provider])
+}
+
+// ======================================================
+// LLM USAGE AND EXECUTION TRACKING
+// ======================================================
+
+model LLMInvocation {
+  id String @id @default(cuid())
+
+  provider LLMProvider
+  modelName String
+
+  operation String?
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+
+  estimatedCost Decimal? @db.Decimal(12, 8)
+  durationMs    Int?
+
+  status       String
+  errorMessage String? @db.Text
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  runId String
+  run   ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  agentExecutionId String?
+  agentExecution   AgentExecution? @relation(fields: [agentExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([runId, createdAt])
+  @@index([provider, modelName])
+}
+
+// ======================================================
+// DOCUMENT UPLOADS
+// ======================================================
+
+model DocumentAsset {
+  id           String         @id @default(cuid())
+  fileName     String
+  originalName String
+  mimeType     String
+  fileSize     BigInt
+  storageKey   String         @db.Text
+  status       DocumentStatus @default(UPLOADED)
+
+  contentHash String?
+  metadata    Json?
+  errorMessage String? @db.Text
+
+  createdAt   DateTime @default(now())
+  processedAt DateTime?
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   ResearchProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  runId String?
+  run   ResearchRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  uploadedById String
+  uploadedBy   User @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, createdAt])
+  @@index([projectId])
+  @@index([runId])
+  @@index([status])
+}
+
+// ======================================================
+// RESEARCH KNOWLEDGE GRAPH
+// ======================================================
+
+model KnowledgeNode {
+  id          String            @id @default(cuid())
+  name        String
+  description String?           @db.Text
+  type        KnowledgeNodeType
+  metadata    Json?
+
+  embedding Unsupported("vector(384)")?
+  embeddingModel String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  outgoingEdges KnowledgeEdge[] @relation("KnowledgeEdgeSource")
+  incomingEdges KnowledgeEdge[] @relation("KnowledgeEdgeTarget")
+
+  @@index([workspaceId, type])
+  @@index([name])
+}
+
+model KnowledgeEdge {
+  id           String               @id @default(cuid())
+  relationship KnowledgeRelationType
+  description  String?              @db.Text
+  weight       Float?
+  metadata     Json?
+
+  createdAt DateTime @default(now())
+
+  sourceNodeId String
+  sourceNode   KnowledgeNode @relation("KnowledgeEdgeSource", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+
+  targetNodeId String
+  targetNode   KnowledgeNode @relation("KnowledgeEdgeTarget", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceNodeId, targetNodeId, relationship])
+  @@index([sourceNodeId])
+  @@index([targetNodeId])
+}
