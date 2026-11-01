@@ -92,6 +92,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(health_router)
 app.include_router(health_router, prefix="/api/v1")
 
+from api.dependencies.auth import verify_internal_service_key
+from fastapi import Depends
+
+@app.get("/api/v1/internal/verify", dependencies=[Depends(verify_internal_service_key)], tags=["Internal"])
+async def internal_verify():
+    return {"status": "authenticated", "service": "ai-engine"}
+
 
 if __name__ == "__main__":
     import uvicorn

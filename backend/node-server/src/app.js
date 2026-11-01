@@ -1,9 +1,20 @@
 import express from "express";
 import cors from "cors";
+import { toNodeHandler } from "better-auth/node";
 import { config } from "./config/index.js";
 import { logger } from "./utils/logger.js";
+import { auth } from "./auth/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+
+// Routes
 import healthRouter from "./routes/health.js";
+import userRouter from "./routes/userRoutes.js";
+import workspaceRouter from "./routes/workspaceRoutes.js";
+import projectRouter from "./routes/projectRoutes.js";
+import researchRouter from "./routes/researchRoutes.js";
+import planRouter from "./routes/planRoutes.js";
+import reportRouter from "./routes/reportRoutes.js";
+import documentRouter from "./routes/documentRoutes.js";
 
 const app = express();
 
@@ -14,6 +25,9 @@ app.use(
     credentials: true,
   })
 );
+
+// Better Auth API routes (must be mounted before express.json body parser)
+app.all("/api/auth/*", toNodeHandler(auth));
 
 // Body parsing
 app.use(express.json({ limit: "10mb" }));
@@ -29,9 +43,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// Root / health routes
+// Root & health routes
 app.use(healthRouter);
 app.use("/api", healthRouter);
+
+// Domain API routes
+app.use("/api/users", userRouter);
+app.use("/api/workspaces", workspaceRouter);
+app.use("/api/projects", projectRouter);
+app.use("/api/research", researchRouter);
+app.use("/api/plans", planRouter);
+app.use("/api/reports", reportRouter);
+app.use("/api/documents", documentRouter);
 
 // Centralized error handling
 app.use(errorHandler);
