@@ -27,13 +27,19 @@ class DatabaseConnection:
         settings = get_settings()
         self.database_url = database_url or settings.DATABASE_URL
         self.pool: AsyncConnectionPool | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def connect(self):
-        """Initializes async connection pool."""
+        """Initializes async connection pool for the active event loop."""
+        current_loop = asyncio.get_running_loop()
         if self.pool is not None:
-            return
+            if self._loop == current_loop and not self.pool.closed:
+                return
+            # If the event loop changed (e.g. across test cases), discard reference to dead pool
+            self.pool = None
+
         logger.info("[Database] Initializing Neon PostgreSQL async connection pool...")
-        # Neon pooler connection parameters
+        self._loop = current_loop
         self.pool = AsyncConnectionPool(
             conninfo=self.database_url,
             min_size=1,
@@ -42,7 +48,7 @@ class DatabaseConnection:
             open=False,
         )
         await self.pool.open()
-        # Verify connection
+        # Verify connection and register pgvector
         async with self.pool.connection() as conn:
             await register_vector_async(conn)
             async with conn.cursor() as cur:
@@ -50,16 +56,22 @@ class DatabaseConnection:
         logger.info("[Database] Neon PostgreSQL async connection pool established and pgvector registered.")
 
     async def disconnect(self):
-        """Closes async connection pool."""
+        """Closes async connection pool if open on current loop."""
         if self.pool is not None:
-            await self.pool.close()
+            try:
+                if not self.pool.closed and self._loop == asyncio.get_running_loop():
+                    await self.pool.close()
+            except Exception:
+                pass
             self.pool = None
+            self._loop = None
             logger.info("[Database] Neon PostgreSQL connection pool closed.")
 
     async def check_health(self) -> bool:
         """Health check probe."""
         try:
-            if self.pool is None:
+            current_loop = asyncio.get_running_loop()
+            if self.pool is None or self._loop != current_loop or self.pool.closed:
                 await self.connect()
             async with self.pool.connection() as conn:
                 async with conn.cursor() as cur:
@@ -72,7 +84,8 @@ class DatabaseConnection:
     @asynccontextmanager
     async def get_connection(self) -> AsyncGenerator:
         """Yields an active database connection with pgvector registered."""
-        if self.pool is None:
+        current_loop = asyncio.get_running_loop()
+        if self.pool is None or self._loop != current_loop or self.pool.closed:
             await self.connect()
         async with self.pool.connection() as conn:
             await register_vector_async(conn)
