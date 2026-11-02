@@ -19,8 +19,10 @@ from config.settings import get_settings
 from utils.logger import logger
 from database.connection import db
 from graph.checkpointer import checkpoint_manager
+from mcp.manager import mcp_manager
 from api.routes.health import router as health_router
 from api.routes.research import router as research_router
+from api.routes.mcp import router as mcp_router
 from api.dependencies.auth import verify_internal_service_key
 
 settings = get_settings()
@@ -35,6 +37,8 @@ async def lifespan(app: FastAPI):
         logger.info("[Lifecycle] Database connection pool initialized.")
         await checkpoint_manager.setup()
         logger.info("[Lifecycle] LangGraph checkpoint tables verified.")
+        await mcp_manager.initialize()
+        logger.info("[Lifecycle] MCP provider clients and tool registry initialized.")
     except Exception as e:
         logger.error(f"[Lifecycle] Initialization warning: {e}")
 
@@ -133,6 +137,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(health_router)
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(research_router)
+app.include_router(mcp_router)
 
 
 @app.get("/api/v1/internal/verify", dependencies=[Depends(verify_internal_service_key)], tags=["Internal"])
