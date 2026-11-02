@@ -6,6 +6,8 @@ from database.repositories.event_repository import event_repository, EventReposi
 from database.repositories.source_repository import source_repository, SourceRepository
 from database.repositories.claim_repository import claim_repository, ClaimRepository
 from database.repositories.mcp_repository import mcp_repository, MCPRepository
+from database.repositories.task_repository import task_repository, TaskRepository
+from database.repositories.report_repository import report_repository, ReportRepository
 
 __all__ = [
     "run_repository",
@@ -18,4 +20,8 @@ __all__ = [
     "ClaimRepository",
     "mcp_repository",
     "MCPRepository",
+    "task_repository",
+    "TaskRepository",
+    "report_repository",
+    "ReportRepository",
 ]
