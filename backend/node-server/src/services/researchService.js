@@ -380,15 +380,13 @@ export class ResearchService {
       ...(query.eventType ? { eventType: query.eventType } : {}),
     };
 
-    const [total, events] = await Promise.all([
-      prisma.researchEvent.count({ where }),
-      prisma.researchEvent.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { sequence: "asc" },
-      }),
-    ]);
+    const total = await prisma.researchEvent.count({ where });
+    const events = await prisma.researchEvent.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { sequence: "asc" },
+    });
 
     return formatPaginatedResponse(events, total, page, limit);
   }

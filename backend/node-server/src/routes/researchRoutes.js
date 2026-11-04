@@ -18,7 +18,8 @@ router.post("/runs/:runId/resume", ResearchController.resumeRun);
 router.post("/runs/:runId/cancel", ResearchController.cancelRun);
 router.post("/runs/:runId/retry", ResearchController.retryRun);
 
-// Run execution artifacts & inspection
+// Real-time SSE streaming & inspection
+router.get("/runs/:runId/events/stream", ResearchController.streamEvents);
 router.get("/runs/:runId/events", ResearchController.getEvents);
 router.get("/runs/:runId/tasks", ResearchController.getTasks);
 router.get("/runs/:runId/agents", ResearchController.getAgents);
@@ -27,4 +28,3 @@ router.get("/runs/:runId/evidence", ResearchController.getEvidence);
 router.get("/runs/:runId/report", ResearchController.getReport);
 
 export default router;
-

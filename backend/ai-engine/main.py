@@ -23,6 +23,8 @@ from mcp.manager import mcp_manager
 from api.routes.health import router as health_router
 from api.routes.research import router as research_router
 from api.routes.mcp import router as mcp_router
+from api.routes.rag import router as rag_router
+from api.routes.memory import router as memory_router
 from api.dependencies.auth import verify_internal_service_key
 
 settings = get_settings()
@@ -138,6 +140,8 @@ app.include_router(health_router)
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(research_router)
 app.include_router(mcp_router)
+app.include_router(rag_router)
+app.include_router(memory_router)
 
 
 @app.get("/api/v1/internal/verify", dependencies=[Depends(verify_internal_service_key)], tags=["Internal"])

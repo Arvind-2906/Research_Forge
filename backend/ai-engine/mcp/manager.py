@@ -176,12 +176,21 @@ class MCPManager:
         )
         call_id = tool_call["id"]
 
-        # 5. Execute tool via client
+        # 5. Emit mcp.tool_started event
+        await event_repository.create_event(
+            run_id=run_id,
+            event_type="mcp.tool_started",
+            message=f"Starting tool '{tool_name}' execution via provider '{tool_def.provider}'",
+            agent_name="MCPManager",
+            payload={"tool_name": tool_name, "provider": tool_def.provider, "call_id": call_id},
+        )
+
+        # 6. Execute tool via client
         start_time = time.perf_counter()
         result = await client.call_tool(tool_name, arguments)
         duration_ms = int((time.perf_counter() - start_time) * 1000)
 
-        # 6. Update tool call record
+        # 7. Update tool call record
         status_str = "SUCCESS" if result.success else "FAILED"
         result_payload = {"data": result.data, "sources": result.source_urls} if result.success else None
         await mcp_repository.complete_tool_call(
@@ -192,12 +201,15 @@ class MCPManager:
             duration_ms=duration_ms,
         )
 
-        # 7. Emit research event
+        # 8. Emit mcp.tool_completed or mcp.tool_failed research event
+        event_type = "mcp.tool_completed" if result.success else "mcp.tool_failed"
         await event_repository.create_event(
             run_id=run_id,
-            event_type="TOOL_CALLED",
-            message=f"Tool '{tool_name}' executed ({status_str}) in {duration_ms}ms",
-            payload={"tool_name": tool_name, "status": status_str, "sources_count": len(result.source_urls)},
+            event_type=event_type,
+            message=f"Tool '{tool_name}' finished ({status_str}) in {duration_ms}ms",
+            agent_name="MCPManager",
+            severity="INFO" if result.success else "WARN",
+            payload={"tool_name": tool_name, "status": status_str, "duration_ms": duration_ms, "sources_count": len(result.source_urls)},
         )
 
         return MCPCallResponse(

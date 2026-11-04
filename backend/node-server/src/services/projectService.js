@@ -62,35 +62,33 @@ export class ProjectService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
-            OR: [
-              { title: { contains: query.search, mode: "insensitive" } },
-              { description: { contains: query.search, mode: "insensitive" } },
-            ],
-          }
+          OR: [
+            { title: { contains: query.search, mode: "insensitive" } },
+            { description: { contains: query.search, mode: "insensitive" } },
+          ],
+        }
         : {}),
     };
 
-    const [total, projects] = await Promise.all([
-      prisma.researchProject.count({ where }),
-      prisma.researchProject.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { [sortBy]: sortOrder },
-        include: {
-          createdBy: {
-            select: { id: true, name: true, email: true, image: true },
-          },
-          _count: {
-            select: {
-              runs: true,
-              documents: true,
-              memories: true,
+          const total = await prisma.researchProject.count({ where });
+          const projects = await prisma.researchProject.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: { [sortBy]: sortOrder },
+            include: {
+              createdBy: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+              _count: {
+                select: {
+                  runs: true,
+                  documents: true,
+                  memories: true,
+                },
+              },
             },
-          },
-        },
-      }),
-    ]);
+  });
 
     return formatPaginatedResponse(projects, total, page, limit);
   }
@@ -99,197 +97,191 @@ export class ProjectService {
    * Creates a new research project
    */
   static async createProject(userId, data) {
-    // Verify membership in target workspace
-    const workspace = await prisma.workspace.findUnique({
-      where: { id: data.workspaceId },
-      include: {
-        members: { where: { userId } },
-      },
-    });
+  // Verify membership in target workspace
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: data.workspaceId },
+    include: {
+      members: { where: { userId } },
+    },
+  });
 
-    if (!workspace || (workspace.ownerId !== userId && workspace.members.length === 0)) {
-      throw new AppError("Access denied to create project in this workspace", 403, "WORKSPACE_FORBIDDEN");
-    }
-
-    const project = await prisma.researchProject.create({
-      data: {
-        title: data.title,
-        description: data.description,
-        settings: data.settings || {},
-        workspaceId: data.workspaceId,
-        createdById: userId,
-      },
-      include: {
-        createdBy: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-      },
-    });
-
-    return project;
+  if (!workspace || (workspace.ownerId !== userId && workspace.members.length === 0)) {
+    throw new AppError("Access denied to create project in this workspace", 403, "WORKSPACE_FORBIDDEN");
   }
+
+  const project = await prisma.researchProject.create({
+    data: {
+      title: data.title,
+      description: data.description,
+      settings: data.settings || {},
+      workspaceId: data.workspaceId,
+      createdById: userId,
+    },
+    include: {
+      createdBy: {
+        select: { id: true, name: true, email: true, image: true },
+      },
+    },
+  });
+
+  return project;
+}
 
   /**
    * Retrieves single project details
    */
   static async getProjectById(projectId, userId) {
-    const { project } = await this.validateProjectAccess(projectId, userId);
+  const { project } = await this.validateProjectAccess(projectId, userId);
 
-    const detailed = await prisma.researchProject.findUnique({
-      where: { id: projectId },
-      include: {
-        createdBy: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        workspace: {
-          select: { id: true, name: true, ownerId: true },
-        },
-        _count: {
-          select: {
-            runs: true,
-            documents: true,
-            memories: true,
-          },
+  const detailed = await prisma.researchProject.findUnique({
+    where: { id: projectId },
+    include: {
+      createdBy: {
+        select: { id: true, name: true, email: true, image: true },
+      },
+      workspace: {
+        select: { id: true, name: true, ownerId: true },
+      },
+      _count: {
+        select: {
+          runs: true,
+          documents: true,
+          memories: true,
         },
       },
-    });
+    },
+  });
 
-    return detailed;
-  }
+  return detailed;
+}
 
   /**
    * Updates project details
    */
   static async updateProject(projectId, userId, updateData) {
-    await this.validateProjectAccess(projectId, userId, ["OWNER", "ADMIN", "MEMBER"]);
+  await this.validateProjectAccess(projectId, userId, ["OWNER", "ADMIN", "MEMBER"]);
 
-    const updated = await prisma.researchProject.update({
-      where: { id: projectId },
-      data: {
-        ...(updateData.title ? { title: updateData.title } : {}),
-        ...(updateData.description !== undefined ? { description: updateData.description } : {}),
-        ...(updateData.status ? { status: updateData.status } : {}),
-        ...(updateData.settings ? { settings: updateData.settings } : {}),
-      },
-    });
+  const updated = await prisma.researchProject.update({
+    where: { id: projectId },
+    data: {
+      ...(updateData.title ? { title: updateData.title } : {}),
+      ...(updateData.description !== undefined ? { description: updateData.description } : {}),
+      ...(updateData.status ? { status: updateData.status } : {}),
+      ...(updateData.settings ? { settings: updateData.settings } : {}),
+    },
+  });
 
-    return updated;
-  }
+  return updated;
+}
 
   /**
    * Deletes a project
    */
   static async deleteProject(projectId, userId) {
-    await this.validateProjectAccess(projectId, userId, ["OWNER", "ADMIN"]);
+  await this.validateProjectAccess(projectId, userId, ["OWNER", "ADMIN"]);
 
-    await prisma.researchProject.delete({
-      where: { id: projectId },
-    });
+  await prisma.researchProject.delete({
+    where: { id: projectId },
+  });
 
-    return { success: true, message: "Project deleted successfully" };
-  }
+  return { success: true, message: "Project deleted successfully" };
+}
 
   /**
    * Retrieves runs for a project
    */
   static async getProjectRuns(projectId, userId, query) {
-    await this.validateProjectAccess(projectId, userId);
-    const { page, limit, skip, sortBy, sortOrder } = getPaginationParams(query);
+  await this.validateProjectAccess(projectId, userId);
+  const { page, limit, skip, sortBy, sortOrder } = getPaginationParams(query);
 
-    const where = {
-      projectId,
-      ...(query.status ? { status: query.status } : {}),
-    };
+  const where = {
+    projectId,
+    ...(query.status ? { status: query.status } : {}),
+  };
 
-    const [total, runs] = await Promise.all([
-      prisma.researchRun.count({ where }),
-      prisma.researchRun.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { [sortBy]: sortOrder },
-        include: {
-          requestedBy: {
-            select: { id: true, name: true, email: true, image: true },
-          },
-          _count: {
-            select: {
-              plans: true,
-              tasks: true,
-              reports: true,
-              events: true,
-            },
-          },
-        },
-      }),
-    ]);
+          const total = await prisma.researchRun.count({ where });
+          const runs = await prisma.researchRun.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: { [sortBy]: sortOrder },
+            include: {
+              requestedBy: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+              _count: {
+                select: {
+                  plans: true,
+                  tasks: true,
+                  reports: true,
+                  events: true,
+                },
+              },
+},
+    });
 
-    return formatPaginatedResponse(runs, total, page, limit);
+return formatPaginatedResponse(runs, total, page, limit);
   }
 
   /**
    * Retrieves reports for a project
    */
   static async getProjectReports(projectId, userId, query) {
-    await this.validateProjectAccess(projectId, userId);
-    const { page, limit, skip, sortBy, sortOrder } = getPaginationParams(query);
+  await this.validateProjectAccess(projectId, userId);
+  const { page, limit, skip, sortBy, sortOrder } = getPaginationParams(query);
 
-    const where = {
-      run: { projectId },
-    };
+  const where = {
+    run: { projectId },
+  };
 
-    const [total, reports] = await Promise.all([
-      prisma.researchReport.count({ where }),
-      prisma.researchReport.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { [sortBy]: sortOrder },
-        include: {
-          run: {
-            select: { id: true, question: true, status: true },
-          },
-          _count: {
-            select: { citations: true, exports: true },
-          },
-        },
-      }),
-    ]);
+        const total = await prisma.researchReport.count({ where });
+        const reports = await prisma.researchReport.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { [sortBy]: sortOrder },
+          include: {
+            run: {
+              select: { id: true, question: true, status: true },
+            },
+  _count: {
+    select: { citations: true, exports: true },
+  },
+},
+    });
 
-    return formatPaginatedResponse(reports, total, page, limit);
+return formatPaginatedResponse(reports, total, page, limit);
   }
 
   /**
    * Retrieves documents associated with a project
    */
   static async getProjectDocuments(projectId, userId, query) {
-    await this.validateProjectAccess(projectId, userId);
-    const { page, limit, skip, sortBy, sortOrder } = getPaginationParams(query);
+  await this.validateProjectAccess(projectId, userId);
+  const { page, limit, skip, sortBy, sortOrder } = getPaginationParams(query);
 
-    const where = { projectId };
+  const where = { projectId };
 
-    const [total, documents] = await Promise.all([
-      prisma.documentAsset.count({ where }),
-      prisma.documentAsset.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { [sortBy]: sortOrder },
-        include: {
-          uploadedBy: {
-            select: { id: true, name: true, email: true },
-          },
-        },
-      }),
-    ]);
+        const total = await prisma.documentAsset.count({ where });
+        const documents = await prisma.documentAsset.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { [sortBy]: sortOrder },
+          include: {
+            uploadedBy: {
+              select: { id: true, name: true, email: true },
+            },
+},
+    });
 
-    // Convert BigInt fileSize to number for JSON response
-    const formattedDocs = documents.map((doc) => ({
-      ...doc,
-      fileSize: Number(doc.fileSize),
-    }));
+// Convert BigInt fileSize to number for JSON response
+const formattedDocs = documents.map((doc) => ({
+  ...doc,
+  fileSize: Number(doc.fileSize),
+}));
 
-    return formatPaginatedResponse(formattedDocs, total, page, limit);
+return formatPaginatedResponse(formattedDocs, total, page, limit);
   }
 }
 

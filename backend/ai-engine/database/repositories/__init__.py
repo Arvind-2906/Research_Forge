@@ -8,6 +8,8 @@ from database.repositories.claim_repository import claim_repository, ClaimReposi
 from database.repositories.mcp_repository import mcp_repository, MCPRepository
 from database.repositories.task_repository import task_repository, TaskRepository
 from database.repositories.report_repository import report_repository, ReportRepository
+from database.repositories.memory_repository import memory_repository, MemoryRepository
+from database.repositories.document_repository import document_repository, DocumentRepository
 
 __all__ = [
     "run_repository",
@@ -24,4 +26,8 @@ __all__ = [
     "TaskRepository",
     "report_repository",
     "ReportRepository",
+    "memory_repository",
+    "MemoryRepository",
+    "document_repository",
+    "DocumentRepository",
 ]

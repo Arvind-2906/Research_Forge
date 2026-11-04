@@ -36,21 +36,26 @@ export class AIEngineClient {
   }
 
   /**
-   * Generic internal authenticated POST request to AI Engine
+   * Generic internal authenticated request to AI Engine
    */
-  static async post(endpoint, data = {}) {
+  static async request(method, endpoint, data = null) {
     try {
       const url = `${this.baseURL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
-      const res = await fetch(url, {
-        method: "POST",
+      const options = {
+        method,
         headers: this.defaultHeaders,
-        body: JSON.stringify(data),
-      });
+      };
 
-      const responseBody = await res.json();
+      if (data && (method === "POST" || method === "PATCH" || method === "PUT")) {
+        options.body = JSON.stringify(data);
+      }
+
+      const res = await fetch(url, options);
+      const responseBody = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         throw new AppError(
-          responseBody?.error?.message || "AI Engine execution request failed",
+          responseBody?.error?.message || responseBody?.detail || "AI Engine request failed",
           res.status,
           responseBody?.error?.code || "AI_ENGINE_ERROR",
           responseBody
@@ -65,5 +70,20 @@ export class AIEngineClient {
       });
     }
   }
-}
 
+  static async get(endpoint) {
+    return this.request("GET", endpoint);
+  }
+
+  static async post(endpoint, data = {}) {
+    return this.request("POST", endpoint, data);
+  }
+
+  static async patch(endpoint, data = {}) {
+    return this.request("PATCH", endpoint, data);
+  }
+
+  static async delete(endpoint) {
+    return this.request("DELETE", endpoint);
+  }
+}
