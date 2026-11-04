@@ -124,14 +124,101 @@ class ReportRepository:
                         ),
                     )
 
+    async def get_report_by_id(self, report_id: str) -> Optional[Dict[str, Any]]:
+        """Fetches a research report by its unique ID."""
+        query = """
+            SELECT id, title, "executiveSummary", "contentMarkdown", status,
+                   version, metadata, "runId", "createdAt", "updatedAt"
+            FROM "ResearchReport"
+            WHERE id = %s
+        """
+        async with db.get_connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(query, (report_id,))
+                return await cur.fetchone()
+
     async def get_citations_for_report(self, report_id: str) -> List[Dict[str, Any]]:
         """Fetches citations for a given report."""
         query = """
-            SELECT id, "citationNumber", locator, anchor, "citationText",
-                   "claimId", "reportId", "evidenceId"
-            FROM "ReportCitation"
+            SELECT c.id, c."citationNumber", c.locator, c.anchor, c."citationText",
+                   c."claimId", c."reportId", c."evidenceId",
+                   cl.claim as "claimText",
+                   e."supportingQuote" as "evidenceQuote"
+            FROM "ReportCitation" c
+            LEFT JOIN "ResearchClaim" cl ON c."claimId" = cl.id
+            LEFT JOIN "ResearchEvidence" e ON c."evidenceId" = e.id
+            WHERE c."reportId" = %s
+            ORDER BY c."citationNumber" ASC
+        """
+        async with db.get_connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(query, (report_id,))
+                return await cur.fetchall()
+
+    async def create_export(
+        self,
+        report_id: str,
+        format_type: str,
+        status: str = "COMPLETED",
+        storage_key: Optional[str] = None,
+        file_name: Optional[str] = None,
+        file_size: Optional[int] = None,
+        error_message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Creates a ReportExport record."""
+        export_id = generate_cuid("exp_")
+        now = datetime.now(timezone.utc)
+        completed_at = now if status == "COMPLETED" else None
+
+        query = """
+            INSERT INTO "ReportExport" (
+                id, format, status, "storageKey", "fileName", "fileSize",
+                "errorMessage", "createdAt", "completedAt", "reportId"
+            )
+            VALUES (%s, %s::"ExportFormat", %s::"ExportStatus", %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, format, status, "storageKey", "fileName", "fileSize",
+                      "errorMessage", "createdAt", "completedAt", "reportId"
+        """
+        async with db.get_connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    query,
+                    (
+                        export_id,
+                        format_type.upper(),
+                        status.upper(),
+                        storage_key,
+                        file_name,
+                        file_size,
+                        error_message,
+                        now,
+                        completed_at,
+                        report_id,
+                    ),
+                )
+                return await cur.fetchone()
+
+    async def get_export_by_id(self, export_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves a ReportExport record by its ID."""
+        query = """
+            SELECT id, format, status, "storageKey", "fileName", "fileSize",
+                   "errorMessage", "createdAt", "completedAt", "reportId"
+            FROM "ReportExport"
+            WHERE id = %s
+        """
+        async with db.get_connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(query, (export_id,))
+                return await cur.fetchone()
+
+    async def get_exports_for_report(self, report_id: str) -> List[Dict[str, Any]]:
+        """Retrieves all exports for a report."""
+        query = """
+            SELECT id, format, status, "storageKey", "fileName", "fileSize",
+                   "errorMessage", "createdAt", "completedAt", "reportId"
+            FROM "ReportExport"
             WHERE "reportId" = %s
-            ORDER BY "citationNumber" ASC
+            ORDER BY "createdAt" DESC
         """
         async with db.get_connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:

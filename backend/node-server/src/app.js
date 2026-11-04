@@ -16,6 +16,8 @@ import planRouter from "./routes/planRoutes.js";
 import reportRouter from "./routes/reportRoutes.js";
 import documentRouter from "./routes/documentRoutes.js";
 import memoryRouter from "./routes/memoryRoutes.js";
+import knowledgeGraphRouter from "./routes/knowledgeGraphRoutes.js";
+import analyticsRouter from "./routes/analyticsRoutes.js";
 
 const app = express();
 
@@ -57,6 +59,8 @@ app.use("/api/plans", planRouter);
 app.use("/api/reports", reportRouter);
 app.use("/api/documents", documentRouter);
 app.use("/api/memory", memoryRouter);
+app.use("/api/knowledge-graph", knowledgeGraphRouter);
+app.use("/api/analytics", analyticsRouter);
 
 // Centralized error handling
 app.use(errorHandler);

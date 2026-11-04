@@ -46,6 +46,28 @@ export class ReportController {
     }
   }
 
+  static async addCitation(req, res, next) {
+    try {
+      const citation = await ReportService.addCitation(req.params.reportId, req.user.id, req.body);
+      res.status(201).json({ success: true, data: citation });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteCitation(req, res, next) {
+    try {
+      const result = await ReportService.deleteCitation(
+        req.params.reportId,
+        req.params.citationId,
+        req.user.id
+      );
+      res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async createExport(req, res, next) {
     try {
       const format = req.body.format || "MARKDOWN";
@@ -55,5 +77,34 @@ export class ReportController {
       next(error);
     }
   }
-}
 
+  static async getExports(req, res, next) {
+    try {
+      const exports = await ReportService.getReportExports(req.params.reportId, req.user.id);
+      res.status(200).json({ success: true, data: exports });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async downloadExport(req, res, next) {
+    try {
+      const { filePath, fileName } = await ReportService.downloadExport(
+        req.params.exportId,
+        req.user.id
+      );
+      res.download(filePath, fileName);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async validateCitations(req, res, next) {
+    try {
+      const audit = await ReportService.validateCitations(req.params.reportId, req.user.id);
+      res.status(200).json({ success: true, data: audit });
+    } catch (error) {
+      next(error);
+    }
+  }
+}

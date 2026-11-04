@@ -25,6 +25,8 @@ from api.routes.research import router as research_router
 from api.routes.mcp import router as mcp_router
 from api.routes.rag import router as rag_router
 from api.routes.memory import router as memory_router
+from api.routes.reports import router as reports_router
+from api.routes.knowledge_graph import router as kg_router
 from api.dependencies.auth import verify_internal_service_key
 
 settings = get_settings()
@@ -142,6 +144,8 @@ app.include_router(research_router)
 app.include_router(mcp_router)
 app.include_router(rag_router)
 app.include_router(memory_router)
+app.include_router(reports_router)
+app.include_router(kg_router)
 
 
 @app.get("/api/v1/internal/verify", dependencies=[Depends(verify_internal_service_key)], tags=["Internal"])
