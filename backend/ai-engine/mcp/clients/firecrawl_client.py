@@ -14,27 +14,12 @@ from config.settings import get_settings
 from mcp.clients.base_client import BaseMCPClient
 from schemas.mcp import MCPToolDefinition, MCPToolResult
 from utils.logger import logger
+from utils.security import is_safe_url
 
 
 def validate_public_url(url: str) -> bool:
     """Validates URL format and blocks loopback/private/internal addresses (SSRF defense)."""
-    try:
-        parsed = urlparse(url.strip())
-        if parsed.scheme not in ("http", "https"):
-            return False
-        hostname = (parsed.hostname or "").lower()
-        if not hostname or hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-            return False
-        # Block internal metadata endpoints and private IP ranges
-        try:
-            ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
-                return False
-        except ValueError:
-            pass  # It is a domain name, not a raw IP
-        return True
-    except Exception:
-        return False
+    return is_safe_url(url)
 
 
 class FirecrawlMCPClient(BaseMCPClient):

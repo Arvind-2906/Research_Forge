@@ -1,0 +1,373 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ResearchForge API Gateway",
+    "version": "1.0.0",
+    "description": "Express.js REST API Gateway and Authentication Server for ResearchForge"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Local Development Server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Returns status ok if the Express server is responsive",
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" },
+                    "timestamp": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Readiness Check",
+        "description": "Verifies Neon PostgreSQL connection",
+        "responses": {
+          "200": {
+            "description": "Database is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ready" },
+                    "database": { "type": "string", "example": "connected" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/sign-up/email": {
+      "post": {
+        "summary": "Email Sign Up",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password", "name"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 8 },
+                  "name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "User created and authenticated" }
+        }
+      }
+    },
+    "/api/auth/sign-in/email": {
+      "post": {
+        "summary": "Email Sign In",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Authenticated session cookie set" }
+        }
+      }
+    },
+    "/api/auth/get-session": {
+      "get": {
+        "summary": "Get Active Session",
+        "tags": ["Authentication"],
+        "responses": {
+          "200": { "description": "Active session and user profile" }
+        }
+      }
+    },
+    "/api/workspaces": {
+      "get": {
+        "summary": "List User Workspaces",
+        "tags": ["Workspaces"],
+        "responses": {
+          "200": { "description": "List of workspaces" }
+        }
+      },
+      "post": {
+        "summary": "Create Workspace",
+        "tags": ["Workspaces"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "slug"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "slug": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Workspace created" }
+        }
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "summary": "List Projects in Workspace",
+        "tags": ["Projects"],
+        "parameters": [
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "List of research projects" }
+        }
+      },
+      "post": {
+        "summary": "Create Project",
+        "tags": ["Projects"],
+        "parameters": [
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "tags": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Project created" }
+        }
+      }
+    },
+    "/api/research/runs": {
+      "post": {
+        "summary": "Initiate Research Run",
+        "tags": ["Research"],
+        "parameters": [
+          {
+            "name": "x-workspace-id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["projectId", "query"],
+                "properties": {
+                  "projectId": { "type": "string" },
+                  "query": { "type": "string" },
+                  "depth": { "type": "integer", "default": 2 },
+                  "breadth": { "type": "integer", "default": 3 },
+                  "requirePlanApproval": { "type": "boolean", "default": true }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Research run created and queued" }
+        }
+      }
+    },
+    "/api/research/runs/{runId}/events": {
+      "get": {
+        "summary": "Stream Real-Time Research Events (SSE)",
+        "tags": ["Research"],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/event-stream Server-Sent Events stream",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/runs/{runId}/approve-plan": {
+      "post": {
+        "summary": "Approve Research Plan",
+        "tags": ["Research"],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["planId", "approved"],
+                "properties": {
+                  "planId": { "type": "string" },
+                  "approved": { "type": "boolean" },
+                  "modifications": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Plan approved, research resumed" }
+        }
+      }
+    },
+    "/api/reports/runs/{runId}": {
+      "get": {
+        "summary": "Get Synthesized Research Report",
+        "tags": ["Reports"],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Report object with sections and citations" }
+        }
+      }
+    },
+    "/api/reports/runs/{runId}/export": {
+      "post": {
+        "summary": "Export Report",
+        "tags": ["Reports"],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["format"],
+                "properties": {
+                  "format": { "type": "string", "enum": ["PDF", "DOCX", "MARKDOWN", "HTML"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Export created" }
+        }
+      }
+    },
+    "/api/knowledge-graph/workspace/{workspaceId}": {
+      "get": {
+        "summary": "Get Knowledge Graph for Workspace",
+        "tags": ["Knowledge Graph"],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Nodes and edges array" }
+        }
+      }
+    },
+    "/api/analytics/workspace/{workspaceId}": {
+      "get": {
+        "summary": "Get Workspace Analytics",
+        "tags": ["Analytics"],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Aggregated research and telemetry metrics" }
+        }
+      }
+    }
+  }
+}
+

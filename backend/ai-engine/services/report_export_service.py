@@ -87,6 +87,113 @@ class ReportExportService:
         lines.append("")
         return "\n".join(lines)
 
+    def export_html(
+        self,
+        report: Dict[str, Any],
+        citations: Optional[List[Dict[str, Any]]] = None,
+        filename: Optional[str] = None,
+    ) -> Tuple[str, int]:
+        """Compiles the report into a styled standalone HTML document and saves to disk."""
+        citations = citations or []
+        report_id = report.get("id", "report")
+        fname = filename or f"{report_id}_{int(datetime.now().timestamp())}.html"
+        out_path = self.export_dir / fname
+
+        title = report.get("title", "Research Report")
+        summary = report.get("executiveSummary", "")
+        content = report.get("contentMarkdown", "")
+        created_at = report.get("createdAt") or datetime.now(timezone.utc).isoformat()
+        version = report.get("version", 1)
+
+        # Basic paragraph and heading formatting
+        body_html = []
+        for block in content.split("\n\n"):
+            block = block.strip()
+            if not block:
+                continue
+            if block.startswith("### "):
+                body_html.append(f"<h3>{block[4:]}</h3>")
+            elif block.startswith("## "):
+                body_html.append(f"<h2>{block[3:]}</h2>")
+            elif block.startswith("# "):
+                body_html.append(f"<h1>{block[2:]}</h1>")
+            else:
+                formatted_para = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", block)
+                formatted_para = re.sub(r"\*(.*?)\*", r"<em>\1</em>", formatted_para)
+                formatted_para = re.sub(r"\[\^?(\d+)\]", r"<sup>[\1]</sup>", formatted_para)
+                body_html.append(f"<p>{formatted_para}</p>")
+
+        citation_rows = []
+        for c in sorted(citations, key=lambda x: x.get("citationNumber", 0)):
+            num = c.get("citationNumber", 0)
+            claim = c.get("citationText") or c.get("claim", {}).get("claim") or "General Citation"
+            quote = c.get("evidence", {}).get("supportingQuote") or "Direct source citation"
+            loc = c.get("locator") or c.get("anchor") or "N/A"
+            citation_rows.append(
+                f"<tr><td>[{num}]</td><td>{claim}</td><td>{quote}</td><td><code>{loc}</code></td></tr>"
+            )
+
+        citations_table = (
+            f"""
+            <table>
+                <thead>
+                    <tr><th>#</th><th>Claim / Statement</th><th>Supporting Evidence</th><th>Source Locator</th></tr>
+                </thead>
+                <tbody>
+                    {''.join(citation_rows)}
+                </tbody>
+            </table>
+            """
+            if citation_rows
+            else "<p><em>No citations recorded for this report.</em></p>"
+        )
+
+        html_template = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #1e293b;
+            max-width: 860px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }}
+        h1 {{ font-size: 2rem; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }}
+        h2 {{ font-size: 1.4rem; color: #1e293b; margin-top: 24px; }}
+        h3 {{ font-size: 1.15rem; color: #334155; }}
+        .metadata {{ color: #64748b; font-size: 0.9rem; margin-bottom: 24px; }}
+        .executive-summary {{ background-color: #f1f5f9; border-left: 4px solid #3b82f6; padding: 16px 20px; margin: 20px 0; border-radius: 4px; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 0.9rem; }}
+        th, td {{ border: 1px solid #cbd5e1; padding: 10px 12px; text-align: left; }}
+        th {{ background-color: #f8fafc; font-weight: 600; }}
+        code {{ background-color: #f1f5f9; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }}
+        sup {{ color: #2563eb; font-weight: 600; }}
+    </style>
+</head>
+<body>
+    <h1>{title}</h1>
+    <div class="metadata">
+        Generated: {created_at} &bull; Version: {version} &bull; Report ID: <code>{report_id}</code>
+    </div>
+    {f'<div class="executive-summary"><h3>Executive Summary</h3><p>{summary}</p></div>' if summary else ''}
+    {''.join(body_html)}
+    <h2>References & Citations</h2>
+    {citations_table}
+</body>
+</html>
+"""
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(html_template)
+
+        file_size = os.path.getsize(str(out_path))
+        logger.info(f"[ReportExport] HTML generated at {out_path} ({file_size} bytes)")
+        return str(out_path), file_size
+
     def export_docx(
         self,
         report: Dict[str, Any],

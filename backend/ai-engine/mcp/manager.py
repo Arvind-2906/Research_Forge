@@ -26,6 +26,7 @@ from mcp.permissions.permission_checker import permission_checker
 from mcp.discovery.tool_discovery import tool_discovery
 from database.repositories import mcp_repository, event_repository
 from utils.logger import logger
+from utils.security import truncate_tool_output
 
 
 class MCPManager:
@@ -190,9 +191,10 @@ class MCPManager:
         result = await client.call_tool(tool_name, arguments)
         duration_ms = int((time.perf_counter() - start_time) * 1000)
 
-        # 7. Update tool call record
+        # 7. Update tool call record with bounded output
         status_str = "SUCCESS" if result.success else "FAILED"
-        result_payload = {"data": result.data, "sources": result.source_urls} if result.success else None
+        bounded_data = truncate_tool_output(result.data) if result.success else None
+        result_payload = {"data": bounded_data, "sources": result.source_urls} if result.success else None
         await mcp_repository.complete_tool_call(
             call_id=call_id,
             status=status_str,

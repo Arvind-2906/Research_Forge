@@ -5,6 +5,7 @@ import { config } from "./config/index.js";
 import { logger } from "./utils/logger.js";
 import { auth } from "./auth/index.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { generalLimiter, authLimiter } from "./middleware/rateLimiter.js";
 
 // Routes
 import healthRouter from "./routes/health.js";
@@ -30,6 +31,7 @@ app.use(
 );
 
 // Better Auth API routes (must be mounted before express.json body parser)
+app.use("/api/auth", authLimiter);
 app.all("/api/auth/*", toNodeHandler(auth));
 
 // Body parsing
@@ -49,6 +51,9 @@ app.use((req, res, next) => {
 // Root & health routes
 app.use(healthRouter);
 app.use("/api", healthRouter);
+
+// Apply rate limiting to API routes
+app.use("/api", generalLimiter);
 
 // Domain API routes
 app.use("/api/users", userRouter);

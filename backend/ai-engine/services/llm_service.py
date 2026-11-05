@@ -12,6 +12,7 @@ from langchain_groq import ChatGroq
 from config.settings import get_settings
 from schemas.llm import ModelRole, TokenUsage, LLMResult, LLMStructuredResult
 from utils.logger import logger
+from utils.security import sanitize_prompt_input
 
 T = TypeVar("T")
 
@@ -86,13 +87,15 @@ class LLMService:
         )
 
     def _format_messages(self, messages: Union[List[BaseMessage], List[dict], str]) -> List[BaseMessage]:
-        """Normalizes input messages into a list of BaseMessage objects."""
+        """Normalizes input messages into a list of BaseMessage objects with prompt injection defense."""
         if isinstance(messages, str):
-            return [HumanMessage(content=messages)]
+            return [HumanMessage(content=sanitize_prompt_input(messages))]
         elif isinstance(messages, list):
             formatted: List[BaseMessage] = []
             for m in messages:
                 if isinstance(m, BaseMessage):
+                    if isinstance(m, HumanMessage) and isinstance(m.content, str):
+                        m.content = sanitize_prompt_input(m.content)
                     formatted.append(m)
                 elif isinstance(m, dict):
                     role = m.get("role", "user").lower()
@@ -100,11 +103,11 @@ class LLMService:
                     if role == "system":
                         formatted.append(SystemMessage(content=content))
                     else:
-                        formatted.append(HumanMessage(content=content))
+                        formatted.append(HumanMessage(content=sanitize_prompt_input(content)))
                 else:
-                    formatted.append(HumanMessage(content=str(m)))
+                    formatted.append(HumanMessage(content=sanitize_prompt_input(str(m))))
             return formatted
-        return [HumanMessage(content=str(messages))]
+        return [HumanMessage(content=sanitize_prompt_input(str(messages)))]
 
     async def ainvoke(
         self,

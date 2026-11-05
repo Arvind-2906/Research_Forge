@@ -60,12 +60,10 @@ class EventRepository:
         elif norm_severity not in ("DEBUG", "INFO", "WARNING", "ERROR"):
             norm_severity = "INFO"
 
-        # Use an advisory transaction lock per runId to ensure atomic sequential ordering
-        query = """
-            WITH lock AS (
-                SELECT pg_advisory_xact_lock(hashtext(%s))
-            ),
-            next_seq AS (
+        # Robust row-level transaction locking on ResearchRun to guarantee monotonic sequences
+        lock_query = 'SELECT id FROM "ResearchRun" WHERE id = %s FOR UPDATE'
+        insert_query = """
+            WITH next_seq AS (
                 SELECT COALESCE(MAX(sequence), 0) + 1 AS seq
                 FROM "ResearchEvent"
                 WHERE "runId" = %s
@@ -90,39 +88,50 @@ class EventRepository:
             FROM next_seq
             RETURNING id, sequence, "eventType", severity, "agentName", message, payload, "eventKey", "runId", "createdAt"
         """
-        async with db.get_connection() as conn:
-            async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute(
-                    query,
-                    (
-                        run_id,
-                        run_id,
-                        event_id,
-                        event_type,
-                        norm_severity,
-                        agent_name,
-                        message,
-                        payload_json,
-                        event_key,
-                        run_id,
-                        task_id,
-                        agent_execution_id,
-                        now,
-                    ),
-                )
-                event = await cur.fetchone()
-                logger.info(
-                    f"[ResearchEvent] Run: {run_id} | Seq: {event['sequence']} | Type: {event_type} | Agent: {agent_name} | Msg: {(message or '')[:60]}"
-                )
 
-                # Broadcast live event to all active SSE subscribers
-                try:
-                    from services.event_bus import event_bus
-                    await event_bus.publish(run_id, dict(event))
-                except Exception as eb_err:
-                    logger.debug(f"[ResearchEvent] EventBus broadcast notice: {eb_err}")
+        for attempt in range(3):
+            try:
+                async with db.get_connection() as conn:
+                    async with conn.transaction():
+                        async with conn.cursor(row_factory=dict_row) as cur:
+                            # 1. Acquire row-level lock on ResearchRun to serialize concurrent event writers
+                            await cur.execute(lock_query, (run_id,))
 
-                return event
+                            # 2. Insert event with strictly allocated sequence
+                            await cur.execute(
+                                insert_query,
+                                (
+                                    run_id,
+                                    event_id,
+                                    event_type,
+                                    norm_severity,
+                                    agent_name,
+                                    message,
+                                    payload_json,
+                                    event_key,
+                                    run_id,
+                                    task_id,
+                                    agent_execution_id,
+                                    now,
+                                ),
+                            )
+                            event = await cur.fetchone()
+                            logger.info(
+                                f"[ResearchEvent] Run: {run_id} | Seq: {event['sequence']} | Type: {event_type} | Agent: {agent_name} | Msg: {(message or '')[:60]}"
+                            )
+
+                            # Broadcast live event to all active SSE subscribers
+                            try:
+                                from services.event_bus import event_bus
+                                await event_bus.publish(run_id, dict(event))
+                            except Exception as eb_err:
+                                logger.debug(f"[ResearchEvent] EventBus broadcast notice: {eb_err}")
+
+                            return event
+            except Exception as e:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(0.05 * (attempt + 1))
 
     async def get_events_for_run(
         self,
